@@ -1413,4 +1413,49 @@ vec_dot_iq4_xs_q8_1(const void *__restrict__ vbq,
 #endif
 }
 
+
+#define VDR_Q1_0_Q8_1_MMVQ      1
+#define VDR_Q1_0_g128_Q8_1_MMVQ 1
+
+static __dpct_inline__ float vec_dot_q1_0_q8_1(
+        const void * __restrict__ vbq,
+        const block_q8_1 * __restrict__ bq8_1,
+        const int & iqs) {
+    // Q1_0: 32 weights per block, 1 Q8_1 block aligns per X block
+    // result = d_q1 * d_q8 * sum(sign * q8_raw)
+    const block_q1_0 * bq = (const block_q1_0 *) vbq;
+    const float d_q1 = (float)(bq->d);
+    const sycl::float2 ds8 = bq8_1[0].ds.convert<float, sycl::rounding_mode::automatic>();
+    const float d_q8 = ds8.x();
+    const int8_t * q8 = bq8_1[0].qs;
+    float sum = 0.0f;
+    for (int bit = 0; bit < QK1_0; bit++) {
+        const float sign = ((bq->qs[bit / 8] >> (bit % 8)) & 1) ? 1.0f : -1.0f;
+        sum += sign * (float)q8[bit];
+    }
+    return d_q1 * d_q8 * sum;
+}
+
+static __dpct_inline__ float vec_dot_q1_0_g128_q8_1(
+        const void * __restrict__ vbq,
+        const block_q8_1 * __restrict__ bq8_1,
+        const int & iqs) {
+    // Q1_0_g128: 128 weights per block, 4 Q8_1 blocks align per X block
+    // iqs = 0..3 selects which Q8_1 block (32 activations each)
+    // result = d_q1 * d_q8[iqs] * sum(sign * q8_raw)
+    const block_q1_0_g128 * bq = (const block_q1_0_g128 *) vbq;
+    const float d_q1 = (float)(bq->d);
+    const sycl::float2 ds8 = bq8_1[iqs].ds.convert<float, sycl::rounding_mode::automatic>();
+    const float d_q8 = ds8.x();
+    const int8_t * q8 = bq8_1[iqs].qs;
+    const int base_bit = iqs * 32;
+    float sum = 0.0f;
+    for (int bit = 0; bit < 32; bit++) {
+        const int abs_bit = base_bit + bit;
+        const float sign = ((bq->qs[abs_bit / 8] >> (abs_bit % 8)) & 1) ? 1.0f : -1.0f;
+        sum += sign * (float)q8[bit];
+    }
+    return d_q1 * d_q8 * sum;
+}
+
 #endif // GGML_SYCL_VECDOTQ_HPP
