@@ -216,7 +216,11 @@ common_peg_arena autoparser::build_parser(const generation_params & inputs) cons
         } else {
             parser = content.build_parser(ctx);
         }
-        return pure_content ? p.prefix(inputs.generation_prompt, reasoning.start) + parser : p.prefix(inputs.generation_prompt, reasoning.start) << parser;
+        // When thinking is off the generation prompt ends with the suppression block (e.g. "<think>\n\n</think>").
+        // Use the full string as a literal prefix so the suppression block isn't matched by the optional
+        // reasoning parser, which would otherwise emit spurious reasoning_content.
+        const std::string prefix_delim = inputs.enable_thinking ? reasoning.start : std::string();
+        return pure_content ? p.prefix(inputs.generation_prompt, prefix_delim) + parser : p.prefix(inputs.generation_prompt, prefix_delim) << parser;
     });
 }
 
